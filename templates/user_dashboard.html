@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>User Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+
+</head>
+<body>
+    <header class="dashboard-header">
+        <nav>
+            <div class="logo">Cab Service</div>
+            <ul>
+                <li><a href="{{ url_for('index') }}">Home</a></li>
+                <li><a href="#">Book a Ride</a></li>
+                <li><a href="#">Profile</a></li>
+                <li><a href="{{ url_for('logout') }}">Logout</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main class="dashboard-container">
+        <section class="dashboard-sidebar">
+            <h3>Account</h3>
+            <ul>
+                <li><a href="#" class="active"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
+                <li><a href="#"><i class="fas fa-history"></i> Ride History</a></li>
+                <li><a href="#"><i class="fas fa-map-marked-alt"></i> Saved Places</a></li>
+                <li><a href="#"><i class="fas fa-credit-card"></i> Payment Methods</a></li>
+                <li><a href="#"><i class="fas fa-user-cog"></i> Profile Settings</a></li>
+            </ul>
+        </section>
+
+        <section class="dashboard-content">
+            <h2>Welcome, {% if user %}{{ user.name }}{% else %}User{% endif %}!</h2>
+
+            <div class="dashboard-grid">
+                <div class="dashboard-card book-ride-card">
+                    <h3>Book a New Ride</h3>
+                    <div class="booking-widget">
+                        <input type="text" id="pickup-location" placeholder="Pickup Location" oninput="suggestLocations('pickup')">
+                        <ul id="pickup-suggestions" class="location-suggestion"></ul>
+                        <input type="text" id="destination" placeholder="Destination" oninput="suggestLocations('destination')">
+                        <ul id="destination-suggestions" class="location-suggestion"></ul>
+                        <button class="book-button" onclick="findNearestDriver()">Book Now</button>
+                    </div>
+                </div>
+
+                <div class="dashboard-card ride-history-card">
+                    <h3>Ride History</h3>
+                    <ul class="ride-list">
+                        {% if rides %}
+                        {% for ride in rides %}
+                        <li>
+                            <span>Date: {{ ride.pickup_time.strftime('%Y-%m-%d %I:%M %p') if ride.pickup_time }}</span><br>
+                            <span>From: {{ ride.pickup_location }}</span><br>
+                            <span>To: {{ ride.dropoff_location }}</span><br>
+                            <span>Driver: {% if ride.driver %}{{ ride.driver.name }}{% else %}N/A{% endif %}</span><br>
+                            <span>Fare: ${{ ride.fare if ride.fare is not none else 'N/A' }}</span>
+                        </li>
+                        {% endfor %}
+                        {% else %}
+                        <li>No recent ride history.</li>
+                        {% endif %}
+                    </ul>
+                    <a href="#">View All Ride History</a>
+                </div>
+
+                <div class="dashboard-card saved-places-card">
+                    <h3>Saved Places</h3>
+                    <ul class="saved-places-list">
+                        {% if saved_places %}
+                        {% for place in saved_places %}
+                        <li>{{ place.name }} <button class="edit-button"><i class="fas fa-edit"></i></button></li>
+                        {% endfor %}
+                        {% else %}
+                        <li>No saved places.</li>
+                        {% endif %}
+                        <button class="add-button"><i class="fas fa-plus"></i> Add New Place</button>
+                    </ul>
+                </div>
+
+                <div class="dashboard-card payment-methods-card">
+                    <h3>Payment Methods</h3>
+                    <ul class="payment-methods-list">
+                        {% if payments %}
+                        {% for payment in payments %}
+                        <li><i class="fab fa-cc-visa"></i> ****-****-****-{{ payment.card_number[-4:] if payment.card_number }} <button class="edit-button"><i class="fas fa-edit"></i></button></li>
+                        {% endfor %}
+                        {% else %}
+                        <li>No payment methods added.</li>
+                        {% endif %}
+                        <button class="add-button"><i class="fas fa-plus"></i> Add New Payment Method</button>
+                    </ul>
+                </div>
+
+                <div class="dashboard-card profile-card">
+                    <h3>Profile</h3>
+                    <p>View and edit your personal details and settings.</p>
+                    <a href="#">Go to Profile Settings</a>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2025 Your Ride Service. All rights reserved.</p>
+        <ul>
+            <li><a href="#">Terms of Service</a></li>
+            <li><a href="#">Privacy Policy</a></li>
+            <li><a href="#">Contact Us</a></li>
+        </ul>
+    </footer>
+
+    <script>
+        const predefinedLocations = [
+            "Ghanta Ghar, Meerut",
+            "Begum Bagh, Meerut",
+            "Pallavpuram, Meerut",
+            "Modipuram, Meerut",
+            "Sadar Bazaar, Meerut",
+            "Roorkee Road, Meerut",
+            "Delhi Road, Meerut"
+        ];
+
+        function suggestLocations(inputType) {
+            const inputElement = document.getElementById(inputType + '-location');
+            const suggestionsElement = document.getElementById(inputType + '-suggestions');
+            const inputText = inputElement.value.toLowerCase();
+
+            suggestionsElement.innerHTML = '';
+
+            if (inputText.length > 0) {
+                const matchingLocations = predefinedLocations.filter(location =>
+                    location.toLowerCase().includes(inputText)
+                );
+
+                matchingLocations.forEach(location => {
+                    const li = document.createElement('li');
+                    li.textContent = location;
+                    li.onclick = () => {
+                        inputElement.value = location;
+                        suggestionsElement.innerHTML = '';
+                    };
+                    suggestionsElement.appendChild(li);
+                });
+            }
+        }
+
+        async function fetchAvailableDrivers(pickupLocation) {
+            try {
+                const response = await fetch('/api/drivers/available', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ pickup_location: pickupLocation })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(`Failed to fetch drivers: ${response.status} - ${errorData.message || response.statusText}`);
+                }
+
+                const driversData = await response.json();
+                return driversData.drivers;
+            } catch (error) {
+                console.error("Error fetching available drivers:", error);
+                alert("Failed to fetch available drivers. Please try again later.");
+                return [];
+            }
+        }
+
+        // Graph data
+        const locationGraph = {
+            "Ghanta Ghar, Meerut": {
+                "Begum Bagh, Meerut": 2,
+                "Sadar Bazaar, Meerut": 3
+            },
+            "Begum Bagh, Meerut": {
+                "Ghanta Ghar, Meerut": 2,
+                "Pallavpuram, Meerut": 5,
+                "Roorkee Road, Meerut": 4
+            },
+            "Pallavpuram, Meerut": {
+                "Begum Bagh, Meerut": 5,
+                "Modipuram, Meerut": 3
+            },
+            "Modipuram, Meerut": {
+                "Pallavpuram, Meerut": 3,
+                "Delhi Road, Meerut": 6
+            },
+            "Sadar Bazaar, Meerut": {
+                "Ghanta Ghar, Meerut": 3,
+                "Roorkee Road, Meerut": 1
+            },
+            "Roorkee Road, Meerut": {
+                "Begum Bagh, Meerut": 4,
+                "Sadar Bazaar, Meerut": 1,
+                "Delhi Road, Meerut": 2
+            },
+            "Delhi Road, Meerut": {
+                "Modipuram, Meerut": 6,
+                "Roorkee Road, Meerut": 2
+            }
+        };
+
+        // Driver locations
+        const drivers = [
+            { id: 1, name: "Driver A", location: "Ghanta Ghar, Meerut" },
+            { id: 2, name: "Driver B", location: "Pallavpuram, Meerut" },
+            { id: 3, name: "Driver C", location: "Roorkee Road, Meerut" }
+        ];
+
+        function dijkstra(graph, startNode) {
+            const distances = {};
+            const visited = {};
+            const priorityQueue = [{ node: startNode, distance: 0 }];
+            distances[startNode] = 0;
+
+            while (priorityQueue.length > 0) {
+                priorityQueue.sort((a, b) => a.distance - b.distance);
+                const { node, distance } = priorityQueue.shift();
+
+                if (visited[node]) {
+                    continue;
+                }
+                visited[node] = true;
+
+                for (const neighbor in graph[node]) {
+                    const newDistance = distance + graph[node][neighbor];
+                    if (!distances[neighbor] || newDistance < distances[neighbor]) {
+                        distances[neighbor] = newDistance;
+                        priorityQueue.push({ node: neighbor, distance: newDistance });
+                    }
+                }
+            }
+            return distances;
+        }
+
+        async function findNearestDriver() {
+            const pickupLocationInput = document.getElementById('pickup-location');
+            const pickupLocation = pickupLocationInput.value;
+
+            if (!pickupLocation) {
+                alert("Please enter your pickup location.");
+                return;
+            }
+
+            const availableDrivers = drivers.filter(driver => driver.location);
+
+            if (availableDrivers.length === 0) {
+                alert("No drivers available at the moment.");
+                return;
+            }
+
+            const pickupDistances = dijkstra(locationGraph, pickupLocation);
+            let nearestDriver = null;
+            let minDistance = Infinity;
+
+            availableDrivers.forEach(driver => {
+                if (pickupDistances[driver.location] !== undefined && pickupDistances[driver.location] < minDistance) {
+                    minDistance = pickupDistances[driver.location];
+                    nearestDriver = driver;
+                }
+            });
+
+            if (nearestDriver) {
+                alert(`Nearest driver: ${nearestDriver.name} is approximately ${minDistance} km away.`);
+                // You would typically then initiate the booking process with this driver.
+            } else {
+                alert("No drivers found in reachable locations.");
+            }
+        }
+    </script>
+</body>
+</html>
